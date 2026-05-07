@@ -7,11 +7,11 @@ metadata:
     app: keycloak
 type: Opaque
 stringData:
-  KEYCLOAK_ADMIN: admin
-  KEYCLOAK_ADMIN_PASSWORD: sunbird
-  KC_DB_USERNAME: kcpgadmin
-  KC_DB_PASSWORD: kcpgpassword
-  sunbird_authorization: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJNNWVldkxVTUV6TTRmTUU0QUU0MUIzOTJmTzYzWVFwMSJ9.eP6JnGE69Q2KxrdtD0FVBK8gSZ37jK1HpyME7rJE8ZU"
+  KEYCLOAK_ADMIN: <username>
+  KEYCLOAK_ADMIN_PASSWORD: <password>
+  KC_DB_USERNAME: <dbusername>
+  KC_DB_PASSWORD: <dbpassword>
+  sunbird_authorization: "<tokengoes here>"
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -22,7 +22,7 @@ metadata:
     app: keycloak
 data:
   KC_DB: postgres
-  KC_DB_URL: "jdbc:postgresql://10.175.29.3:5432/keycloakdb"
+  KC_DB_URL: "jdbc:postgresql://<postgresID>:<postgresPort>/<postgresDBName>"
   KC_HOSTNAME_STRICT: "false"
   KC_HOSTNAME_STRICT_HTTPS: "false"
   KC_HTTP_ENABLED: "true"
@@ -32,12 +32,12 @@ data:
   KC_FEATURES: "js-adapter,admin-fine-grained-authz,scripts"
   KC_LOG_LEVEL: "INFO"
   ENV: "dev"
-  sunbird_user_service_base_url: "http://10.175.29.10/learner"
-  sunbird_lms_base_url: "http://10.175.29.10/learner/private"
+  sunbird_user_service_base_url: "http://<learnerIp>/learner"
+  sunbird_lms_base_url: "http://<learnerIp>/learner/private"
   sunbird_login_otp_template: "loginWithOTP"
   sunbird_login_otp_email_subject: "OTP Details for Login"
-  sunbird_cassandra_host: "10.175.2.36"
-  sunbird_cassandra_port: "9042"
+  sunbird_cassandra_host: "<cassandraIP>"
+  sunbird_cassandra_port: "<cassandraPORT>"
   # JGroups / Infinispan clustering via Kubernetes DNS_PING
   KC_CACHE: "ispn"
   KC_CACHE_STACK: "kubernetes"
