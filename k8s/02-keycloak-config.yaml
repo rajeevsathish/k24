@@ -1,0 +1,132 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: keycloak-secret
+  namespace: keycloak
+  labels:
+    app: keycloak
+type: Opaque
+stringData:
+  KEYCLOAK_ADMIN: admin
+  KEYCLOAK_ADMIN_PASSWORD: sunbird
+  KC_DB_USERNAME: kcpgadmin
+  KC_DB_PASSWORD: kcpgpassword
+  sunbird_authorization: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJNNWVldkxVTUV6TTRmTUU0QUU0MUIzOTJmTzYzWVFwMSJ9.eP6JnGE69Q2KxrdtD0FVBK8gSZ37jK1HpyME7rJE8ZU"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-config
+  namespace: keycloak
+  labels:
+    app: keycloak
+data:
+  KC_DB: postgres
+  KC_DB_URL: "jdbc:postgresql://10.175.29.3:5432/keycloakdb"
+  KC_HOSTNAME_STRICT: "false"
+  KC_HOSTNAME_STRICT_HTTPS: "false"
+  KC_HTTP_ENABLED: "true"
+  KC_PROXY_HEADERS: "xforwarded"
+  KC_HEALTH_ENABLED: "true"
+  KC_METRICS_ENABLED: "true"
+  KC_FEATURES: "js-adapter,admin-fine-grained-authz,scripts"
+  KC_LOG_LEVEL: "INFO"
+  ENV: "dev"
+  sunbird_user_service_base_url: "http://10.175.29.10/learner"
+  sunbird_lms_base_url: "http://10.175.29.10/learner/private"
+  sunbird_login_otp_template: "loginWithOTP"
+  sunbird_login_otp_email_subject: "OTP Details for Login"
+  sunbird_cassandra_host: "10.175.2.36"
+  sunbird_cassandra_port: "9042"
+  # JGroups / Infinispan clustering via Kubernetes DNS_PING
+  KC_CACHE: "ispn"
+  KC_CACHE_STACK: "kubernetes"
+  JAVA_OPTS_APPEND: "-Djgroups.dns.query=keycloak-headless.keycloak.svc.cluster.local -Xms512m -Xmx1024m"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-infinispan-config
+  namespace: keycloak
+  labels:
+    app: keycloak
+data:
+  cache-ispn.xml: |
+    <?xml version="1.0" encoding="UTF-8"?>
+    <infinispan
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="urn:infinispan:config:14.0 http://www.infinispan.org/schemas/infinispan-config-14.0.xsd"
+            xmlns="urn:infinispan:config:14.0">
+
+        <jgroups>
+            <stack name="kubernetes" extends="tcp">
+                <dns.DNS_PING dns_query="${jgroups.dns.query}"
+                              dns_record_type="A"
+                              stack.combine="REPLACE"
+                              stack.position="MPING"/>
+            </stack>
+        </jgroups>
+
+        <cache-container name="keycloak">
+            <transport lock-timeout="60000" stack="kubernetes"/>
+            <metrics names-as-tags="true" />
+            <local-cache name="realms" simple-cache="true">
+                <encoding>
+                    <key media-type="application/x-java-object"/>
+                    <value media-type="application/x-java-object"/>
+                </encoding>
+                <memory max-count="10000"/>
+            </local-cache>
+            <local-cache name="users" simple-cache="true">
+                <encoding>
+                    <key media-type="application/x-java-object"/>
+                    <value media-type="application/x-java-object"/>
+                </encoding>
+                <memory max-count="10000"/>
+            </local-cache>
+            <distributed-cache name="sessions" owners="2">
+                <expiration lifespan="-1"/>
+            </distributed-cache>
+            <distributed-cache name="authenticationSessions" owners="2">
+                <expiration lifespan="-1"/>
+            </distributed-cache>
+            <distributed-cache name="offlineSessions" owners="2">
+                <expiration lifespan="-1"/>
+            </distributed-cache>
+            <distributed-cache name="clientSessions" owners="2">
+                <expiration lifespan="-1"/>
+            </distributed-cache>
+            <distributed-cache name="offlineClientSessions" owners="2">
+                <expiration lifespan="-1"/>
+            </distributed-cache>
+            <distributed-cache name="loginFailures" owners="2">
+                <expiration lifespan="-1"/>
+            </distributed-cache>
+            <local-cache name="authorization" simple-cache="true">
+                <encoding>
+                    <key media-type="application/x-java-object"/>
+                    <value media-type="application/x-java-object"/>
+                </encoding>
+                <memory max-count="10000"/>
+            </local-cache>
+            <replicated-cache name="work">
+                <expiration lifespan="-1"/>
+            </replicated-cache>
+            <local-cache name="keys" simple-cache="true">
+                <encoding>
+                    <key media-type="application/x-java-object"/>
+                    <value media-type="application/x-java-object"/>
+                </encoding>
+                <expiration max-idle="3600000"/>
+                <memory max-count="1000"/>
+            </local-cache>
+            <distributed-cache name="actionTokens" owners="2">
+                <encoding>
+                    <key media-type="application/x-java-object"/>
+                    <value media-type="application/x-java-object"/>
+                </encoding>
+                <expiration max-idle="-1" lifespan="-1" interval="300000"/>
+                <memory max-count="-1"/>
+            </distributed-cache>
+        </cache-container>
+    </infinispan>

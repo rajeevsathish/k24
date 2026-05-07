@@ -1,0 +1,168 @@
+# Headless service required for JGroups DNS_PING peer discovery
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak-headless
+  namespace: keycloak
+  labels:
+    app: keycloak
+spec:
+  type: ClusterIP
+  clusterIP: None          # headless → DNS returns individual pod IPs
+  publishNotReadyAddresses: true   # pods must see each other during startup
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: jgroups
+      port: 7800
+      targetPort: 7800
+  selector:
+    app: keycloak
+---
+# ClusterIP service used by the Ingress / users
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: keycloak
+  labels:
+    app: keycloak
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+  selector:
+    app: keycloak
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: keycloak
+  namespace: keycloak
+---
+# RBAC: Keycloak pods need to list endpoints for JGroups KUBE_PING fallback
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: keycloak-pod-reader
+  namespace: keycloak
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: keycloak-pod-reader-binding
+  namespace: keycloak
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: keycloak-pod-reader
+subjects:
+  - kind: ServiceAccount
+    name: keycloak
+    namespace: keycloak
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: keycloak
+  namespace: keycloak
+  labels:
+    app: keycloak
+spec:
+  serviceName: keycloak-headless
+  replicas: 3
+  podManagementPolicy: Parallel       # all 3 nodes start at once
+  selector:
+    matchLabels:
+      app: keycloak
+  template:
+    metadata:
+      labels:
+        app: keycloak
+    spec:
+      serviceAccountName: keycloak
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:24.0.4
+          args:
+            - start
+            - --cache-config-file=/opt/keycloak/conf/cache-ispn.xml
+            - --import-realm
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: jgroups
+              containerPort: 7800
+          envFrom:
+            - secretRef:
+                name: keycloak-secret
+            - configMapRef:
+                name: keycloak-config
+          # Individual env vars (overrides envFrom if key conflicts)
+          # sunbird_* vars are sourced from keycloak-config ConfigMap and keycloak-secret via envFrom above
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "1"
+            limits:
+              memory: "8Gi"
+              cpu: "2"
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 10
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 5
+          startupProbe:
+            httpGet:
+              path: /health/started
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            failureThreshold: 30
+          volumeMounts:
+            - name: cache-config
+              mountPath: /opt/keycloak/conf/cache-ispn.xml
+              subPath: cache-ispn.xml
+            - name: themes
+              mountPath: /opt/keycloak/themes/sunbird
+            - name: providers
+              mountPath: /opt/keycloak/providers/keycloak-email-phone-autthenticator-1.0-SNAPSHOT.jar
+              subPath: keycloak-email-phone-autthenticator-1.0-SNAPSHOT.jar
+            - name: realm-import
+              mountPath: /opt/keycloak/data/import
+      volumes:
+        - name: cache-config
+          configMap:
+            name: keycloak-infinispan-config
+        # ── These volumes must be populated BEFORE deploying ──
+        # Option A: Use hostPath (simple for minikube)
+        # Option B: Use PVCs + an init container that fetches them
+        - name: themes
+          hostPath:
+            path: /data/keycloak/themes/sunbird
+            type: DirectoryOrCreate
+        - name: providers
+          hostPath:
+            path: /data/keycloak/providers
+            type: DirectoryOrCreate
+        - name: realm-import
+          hostPath:
+            path: /data/keycloak/realm
+            type: DirectoryOrCreate
